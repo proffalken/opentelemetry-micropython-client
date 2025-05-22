@@ -1,0 +1,5 @@
+{
+    "name": "opentelemetry-micropython-client",
+    "description": "OpenTelemetry client for MicroPython",
+    "files": ["opentelemetry_client.py"]
+}
