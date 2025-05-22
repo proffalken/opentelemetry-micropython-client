@@ -10,7 +10,7 @@ class WiFiConnection:
         self.connect()
     
     def connect(self):
-        print("Connecting to WiFi...")
+        print(f"Connecting to WiFi network {self.ssid}...")
         self.wlan.connect(self.ssid, self.password)
         while not self.wlan.isconnected():
             time.sleep(1)
