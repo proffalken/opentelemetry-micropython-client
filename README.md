@@ -26,6 +26,25 @@ A lightweight OpenTelemetry client library for [MicroPython](https://micropython
 mpremote mip install github:proffalken/opentelemetry-micropython-client
 ```
 
+#### 1(b). Dependencies
+
+It turns out that different distributions of MicroPython include different sets of libraries.
+
+This means that whilst `umqtt` is included on the ESP32 distribution, it is *not* included on the RP2040
+by default and therefore the examples don't work straight away on the Pi Pico W.
+
+To fix this, connect to the Pi Pico W and press `ctrl+c` to get yourself to the command prompt (which 
+looks like `>>>`).
+
+Now run the following commands:
+
+```python
+import mips
+mips.install("umqtt.simple")
+```
+
+Now restart the device (`ctrl+d`) does this on my board and the MQTT examples should work!
+
 ### 2. Basic Usage Example
 
 Here is a minimal example based on [`examples/basic/main.py`](examples/basic/main.py):
