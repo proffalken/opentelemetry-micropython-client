@@ -28,22 +28,26 @@ def parse_traceparent(traceparent):
     return trace_id, parent_span_id
 
 def ensure_str(val):
-    print("[ensure_str] called with val:", val, "type:", type(val))
     if isinstance(val, bytes):
-        result = val.decode()
-        print("[ensure_str] decoded bytes to str:", result)
-        return result
+        return val.decode()
     elif isinstance(val, str):
-        result = str(val)
-        print("[ensure_str] coerced to str:", result)
-        return result
+        return str(val)
     elif val is None:
-        print("[ensure_str] got None, returning ''")
         return ""
     else:
-        result = str(val)
-        print("[ensure_str] coerced unknown type to str:", result)
-        return result
+        return str(val)
+
+def get_epoch_offset():
+    """Detect whether time.time() returns 1970 or 2000 epoch, and set the offset accordingly."""
+    t = time.time()
+    # If t is below some threshold (e.g., 1,600,000,000 for 2020-09-13), it's likely MicroPython epoch (year 2000)
+    # Otherwise, it's standard Unix epoch (year 1970)
+    if t < 1_600_000_000:
+        return MICROPY_EPOCH_OFFSET
+    else:
+        return 0
+
+EPOCH_OFFSET = get_epoch_offset()
 
 class OpenTelemetryClient:
     def __init__(self, wifi, otel_collector, port=4318, resource_attributes=None, sync_time=True):
@@ -82,7 +86,7 @@ class OpenTelemetryClient:
             print("⚠️  Warning: System time still invalid! Traces may have wrong timestamps.")
 
     def _now_unix_nano(self):
-        return int((time.time() + MICROPY_EPOCH_OFFSET) * 1e9)
+        return int((time.time() + EPOCH_OFFSET) * 1e9)
 
     def generate_trace_id(self):
         return "".join("{:08x}".format(urandom.getrandbits(32)) for _ in range(4))
@@ -295,19 +299,12 @@ class OpenTelemetryClient:
         )
 
     def build_traceparent(self, trace_id, span_id, sampled="01"):
-        print("[build_traceparent] called with trace_id:", trace_id, "type:", type(trace_id))
-        print("[build_traceparent] called with span_id:", span_id, "type:", type(span_id))
         try:
             trace_id = ensure_str(trace_id or self.trace_id or self.generate_trace_id())
-            print("[build_traceparent] after ensure_str(trace_id):", trace_id, "type:", type(trace_id))
             span_id = ensure_str(span_id or self.parent_span_id or self.generate_span_id())
-            print("[build_traceparent] after ensure_str(span_id):", span_id, "type:", type(span_id))
             trace_id = zfill(trace_id, 32)
-            print("[build_traceparent] after zfill(32) trace_id:", trace_id, "type:", type(trace_id))
             span_id = zfill(span_id, 16)
-            print("[build_traceparent] after zfill(16) span_id:", span_id, "type:", type(span_id))
             result = f"00-{trace_id}-{span_id}-{sampled}"
-            print("[build_traceparent] result:", result)
             return result
         except Exception as e:
             print("[build_traceparent] Exception occurred:", e)
@@ -319,42 +316,39 @@ class OpenTelemetryClient:
             raise
 
     def inject_context_to_payload(self, payload, trace_id=None, span_id=None, sampled="01"):
-        print("[inject_context_to_payload] called with trace_id:", trace_id, "span_id:", span_id)
         traceparent = self.build_traceparent(trace_id, span_id, sampled)
         payload["traceparent"] = traceparent
         payload["trace_id"] = trace_id or self.trace_id
         payload["parent_span_id"] = span_id or self.parent_span_id
-        print("[inject_context_to_payload] payload after injection:", payload)
         return payload
 
     def inject_context_to_headers(self, headers, trace_id=None, span_id=None, sampled="01"):
-        print("[inject_context_to_headers] called with trace_id:", trace_id, "span_id:", span_id)
         traceparent = self.build_traceparent(trace_id, span_id, sampled)
         headers["traceparent"] = traceparent
-        print("[inject_context_to_headers] headers after injection:", headers)
         return headers
 
     def _send_data(self, endpoint, data):
-        url = f"http://{self.otel_collector}:{self.port}{endpoint}"
+        # Ensure the URL is not host:port:port style
+        if ':' in str(self.otel_collector):
+            print("⚠️  Warning: otel_collector contains ':'. You should pass only the host (e.g., '10.231.1.200'), not 'host:port'. Fixing for you.")
+            host, port = self.otel_collector.split(':', 1)
+            url = f"http://{host}:{port}{endpoint}"
+        else:
+            url = f"http://{self.otel_collector}:{self.port}{endpoint}"
         headers = {'Content-Type': 'application/json'}
-        print("🔹 Sending Data to OpenTelemetry Collector:")
-        print("Data types in outgoing payload:")
-        def walk(obj, path=''):
-            if isinstance(obj, dict):
-                for k, v in obj.items():
-                    walk(v, path + '.' + k if path else k)
-            elif isinstance(obj, list):
-                for i, v in enumerate(obj):
-                    walk(v, f'{path}[{i}]')
-            else:
-                print(f"{path}: {type(obj)} {repr(obj)}")
-        walk(data)
-        json_data = ujson.dumps(data)
-        print(json_data)
+        try:
+            json_data = ujson.dumps(data)
+        except Exception as e:
+            print("❌ Error during ujson.dumps!")
+            import sys
+            sys.print_exception(e)
+            raise
         try:
             response = urequests.post(url, data=json_data, headers=headers)
             print("Raw response content:", getattr(response, "content", "(no .content property)"))
             print("Response:", response.status_code, response.text)
             response.close()
         except Exception as e:
-            print("❌ Failed to send data:", e)
+            print("❌ Failed to send data (during HTTP POST):", e)
+            import sys
+            sys.print_exception(e)
