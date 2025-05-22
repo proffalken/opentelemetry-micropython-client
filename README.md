@@ -1,83 +1,126 @@
-# opentelemetry-micropython-client
+# OpenTelemetry MicroPython Client
 
-[![MicroPython](https://img.shields.io/badge/MicroPython-Compatible-blue.svg)](https://micropython.org/)
-[![MIP Installable](https://img.shields.io/badge/MIP%20Installable-Yes-green)](https://docs.micropython.org/en/latest/reference/packages.html)
+[![License](https://img.shields.io/github/license/proffalken/opentelemetry-micropython-client)](LICENSE)
 
-A minimal [OpenTelemetry](https://opentelemetry.io/) client for MicroPython, supporting basic metrics, traces, and logs.  
-Designed for IoT and embedded devices running MicroPython.
-
----
+A lightweight OpenTelemetry client library for [MicroPython](https://micropython.org/) that brings distributed tracing, metrics, and observability to embedded and IoT Python devices. Built specifically for MicroPython environments, this library enables you to instrument your projects and export telemetry data to any OpenTelemetry-compatible backend.
 
 ## Features
 
-- Send logs, traces, and metrics to an OpenTelemetry Collector over HTTP.
-- Log events with trace/span correlation.
-- Lightweight, suitable for constrained environments.
-- **Installable directly on MicroPython devices via [MIP](https://docs.micropython.org/en/latest/reference/packages.html).**
+- **Tracing**: Create, manage, and export traces and spans from MicroPython applications.
+- **Metrics**: Send custom metrics such as gauge values.
+- **Logging**: Log events tied to traces/spans.
+- **Context Propagation**: Maintain trace context across your application.
+- **WiFi Client**: Includes a basic, MicroPython-friendly WiFi connection helper for easy network setup (but you can easily add your own!).
+- **Example Integrations**: Example code for ESP32 and other MicroPython boards, including HTTP and MQTT trace propagation.
 
----
+## Getting Started
 
-## Installation
+### 1. Install the Library
 
-### Using mpremote + MIP (recommended)
+- Download or clone this repository.
+- Copy the relevant `.py` files (such as `opentelemetry_client.py` and `wifi_connection.py`) into your MicroPython project directory.
 
-```sh
+#### 1(a). Install via MIP
+
+```
 mpremote mip install github:proffalken/opentelemetry-micropython-client
 ```
 
-Or, to install just the library file:
+### 2. Basic Usage Example
 
-```sh
-mpremote mip install https://raw.githubusercontent.com/proffalken/opentelemetry-micropython-client/main/opentelemetry_client.py
-```
-
-> Replace `proffalken` and the repo name if you fork or rename.
-
----
-
-## Usage
+Here is a minimal example based on [`examples/basic/main.py`](examples/basic/main.py):
 
 ```python
+import time
+from wifi_connection import WiFiConnection
 from opentelemetry_client import OpenTelemetryClient
 
-# Example: set up your WiFi and resource attributes as needed
-wifi = None  # (Replace with your WiFi connection instance)
+# 1. Connect to WiFi
+SSID = "<YOUR_WIFI_SSID>"
+PASSWORD = "<YOUR_WIFI_PASSWORD>"
+wifi = WiFiConnection(SSID, PASSWORD)
+
+# 2. Set up OpenTelemetry client
+OTEL_COLLECTOR = "<YOUR_OTEL_COLLECTOR_IP_OR_HOSTNAME>"
+RESOURCE_ATTRIBUTES = {
+    "service.name": "example-device",
+    "service.version": "0.1",
+    "host.name": "esp32-example"
+}
 otel = OpenTelemetryClient(
     wifi,
-    otel_collector="192.168.1.100",
-    resource_attributes={
-        "service.name": "my-device",
-        "host.name": "esp32"
-    }
+    otel_collector=OTEL_COLLECTOR,
+    resource_attributes=RESOURCE_ATTRIBUTES
 )
 
-# Start a trace
-trace_id, span_id = otel.start_trace("my-span", kind="SERVER")
-# ... do something ...
-otel.send_gauge_metric("temperature", 22)
-otel.log(trace_id, span_id, "Something happened")
+# 3. Send a gauge metric
+otel.send_gauge_metric(
+    name="temperature",
+    value=24,
+    attributes=[
+        {"key": "unit", "value": {"stringValue": "celsius"}}
+    ]
+)
+
+# 4. Start a trace/span, log an event, and end the span
+trace_id, span_id = otel.start_trace(
+    name="example-trace",
+    kind="INTERNAL",
+    attributes=[
+        {"key": "example", "value": {"stringValue": "demo-span"}}
+    ]
+)
+
+# Simulate some work
+time.sleep(1)
+
+# Log an event attached to the span
+otel.log(
+    trace_id=trace_id,
+    span_id=span_id,
+    body="This is an example log message from MicroPython",
+    attributes={"severity": "info"}
+)
+
+# End the span/trace
 otel.end_trace(span_id)
+
+print("Example complete! Metric, log, and trace have been sent.")
 ```
 
-See [opentelemetry_client.py](opentelemetry_client.py) for API details.
+### 3. Setting up Networking (MicroPython WiFi)
 
----
+The included `wifi_connection.py` module provides an easy way to connect your MicroPython device to a WiFi network:
 
-## Development
+```python
+from wifi_connection import WiFiConnection
 
-Clone the repo, edit `opentelemetry_client.py`, and test on your MicroPython device.
+wifi = WiFiConnection("your-ssid", "your-password")
+```
 
-To update the package via MIP, push to the `main` branch.
+### 4. Exporting Telemetry
 
----
+All telemetry (metrics, traces, logs) is exported to the OpenTelemetry Collector endpoint you specify.
+
+## More Examples
+
+See the [examples directory](./examples/) for:
+
+- [Basic usage](./examples/basic/main.py)
+- [Propagating trace headers over HTTP](./examples/http_trace_headers/)
+- [Tracing and logging with MQTT](./examples/mqtt_trace_log/)
+- [MQTT trace log with reply](./examples/mqtt_trace_log_reply/)
+
+Each example comes with detailed README and code you can adapt to your own MicroPython projects.
+
+## Project Status
+
+This library is under active development. Contributions, feedback, and issues are welcome!
 
 ## License
 
-MIT License.
+This project is licensed under the MIT License. See [LICENSE](LICENSE) for details.
 
 ---
 
-## References
-
-- [MicroPython MIP packaging](https://docs.micropython.org/en/latest/reference/packages.html)
-- [OpenTelemetry documentation](https://opentelemetry.io/)
+Made with ❤️ for the MicroPython community.
